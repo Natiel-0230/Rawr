@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Moving Exit & Dinosaur</title>
+  <style>
+    html,body {
+      height:100%;
+      margin:0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      -webkit-font-smoothing:antialiased;
+      -moz-osx-font-smoothing:grayscale;
+      background: url("https://media.istockphoto.com/id/1219023440/vector/cute-meadow-area-with-mountains-and-flowers.jpg?s=612x612&w=0&k=20&c=KCmW2qoo30v4iFZq9XqX_8dzxNdMa7VbgVmRqoCnSyY=") center/cover no-repeat fixed;
+    }
+
+    /* Container to center controls a bit from top */
+    .wrap {
+      height:100%;
+      display:flex;
+      align-items:flex-end;
+      justify-content:center;
+      padding: 6vh 4vw;
+      box-sizing:border-box;
+      pointer-events: none; /* allow absolute children to handle events */
+    }
+
+    /* Buttons are absolute so Exit can move freely */
+    .controls {
+      position:relative;
+      width:100%;
+      max-width:480px;
+      height:220px;
+      pointer-events:auto;
+    }
+
+    button {
+      -webkit-appearance:none;
+      appearance:none;
+      border:0;
+      padding:14px 20px;
+      font-size:18px;
+      border-radius:12px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+      background: rgba(255,255,255,0.95);
+      cursor:pointer;
+      touch-action: manipulation;
+    }
+
+    /* Click me - fixed in bottom center */
+    #clickMe {
+      position: absolute;
+      left:50%;
+      transform: translateX(-50%);
+      bottom:20px;
+      width:160px;
+      text-align:center;
+    }
+
+    /* Exit - starts near bottom-left, will be moved by JS */
+    #exitBtn {
+      position:absolute;
+      left:20px;
+      bottom:20px;
+      width:120px;
+      text-align:center;
+      background: rgba(255,200,200,0.96);
+      pointer-events:auto;
+    }
+
+    /* Overlay for GIF */
+    .overlay {
+      position:fixed;
+      left:0; right:0; top:0; bottom:0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background: rgba(0,0,0,0.45);
+      z-index:9999;
+      padding:20px;
+      box-sizing:border-box;
+      backdrop-filter: blur(2px);
+      animation: fadeIn .18s ease-out;
+    }
+
+    .gif-card {
+      background: #fff;
+      border-radius:14px;
+      padding:10px;
+      max-width:92%;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+      text-align:center;
+    }
+
+    .gif-card img {
+      width:100%;
+      height:auto;
+      display:block;
+      border-radius:8px;
+      max-height:60vh;
+    }
+
+    .close {
+      margin-top:10px;
+      display:inline-block;
+      padding:8px 12px;
+      border-radius:10px;
+      background: #222;
+      color:#fff;
+      font-weight:600;
+    }
+
+    @keyframes fadeIn {
+      from { opacity:0; transform: translateY(6px); }
+      to   { opacity:1; transform: translateY(0); }
+    }
+
+    /* Small-screen tweaks */
+    @media (max-width:420px) {
+      button { font-size:16px; padding:12px 16px; }
+      #clickMe { width:140px; }
+      #exitBtn { width:110px; left:12px; bottom:12px; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="wrap" aria-hidden="false">
+    <div class="controls" id="controls">
+      <button id="clickMe" aria-label="Click me">Click me</button>
+      <button id="exitBtn" aria-label="Exit">Exit</button>
+    </div>
+  </div>
+
+  <!-- overlay container inserted by JS when needed -->
+
+  <script>
+    // ---------- Click me logic (show GIF overlay) ----------
+    const clickMeBtn = document.getElementById('clickMe');
+    clickMeBtn.addEventListener('click', showDino);
+
+    function showDino() {
+      // create overlay
+      const overlay = document.createElement('div');
+      overlay.className = 'overlay';
+      overlay.tabIndex = -1;
+
+      const card = document.createElement('div');
+      card.className = 'gif-card';
+
+      // GIF: dinosaur facepalm
+      const img = document.createElement('img');
+      img.src = 'https://media.tenor.com/LpVJSEwoWnIAAAAj/dinosaur-facepalm.gif';
+      img.alt = 'Dinosaur facepalm';
+
+      // close button
+      const close = document.createElement('button');
+      close.className = 'close';
+      close.textContent = 'Close';
+      close.addEventListener('click', () => overlay.remove());
+
+      // also close if overlay background clicked (but not when clicking the image)
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) overlay.remove();
+      });
+
+      card.appendChild(img);
+      card.appendChild(close);
+      overlay.appendChild(card);
+      document.body.appendChild(overlay);
+
+      // on mobile, focus close for easy access
+      close.focus();
+    }
+
+    // ---------- Exit button movement logic ----------
+    const exitBtn = document.getElementById('exitBtn');
+    let moving = false;
+    let vx = 0, vy = 0;
+    let x = null, y = null; // top-left position (px)
+    let moveTimer = null;
+    const FPS = 60;
+    const step = 1000 / FPS;
+
+    function startMoving(initial = true) {
+      if (moving) return;
+      moving = true;
+
+      // Set starting coordinates if not set (compute from current computed style)
+      const rect = exitBtn.getBoundingClientRect();
+      if (x === null || y === null) {
+        x = rect.left;
+        y = rect.top;
+      }
+
+      // give a starting random velocity if needed
+      if (initial) {
+        const speed = Math.max(window.innerWidth, window.innerHeight) * 0.0025; // scale with screen
+        const angle = Math.random() * Math.PI * 2;
+        vx = Math.cos(angle) * speed;
+        vy = Math.sin(angle) * speed;
+      }
+
+      // ensure position is absolute relative to viewport (we'll use fixed positioning to avoid layout shift)
+      exitBtn.style.position = 'fixed';
+      exitBtn.style.left = x + 'px';
+      exitBtn.style.top = y + 'px';
+      exitBtn.style.bottom = 'auto'; // cancel bottom usage
+
+      moveTimer = setInterval(stepMove, step);
+    }
+
+    function stepMove() {
+      const btnRect = exitBtn.getBoundingClientRect();
+      const w = btnRect.width;
+      const h = btnRect.height;
+
+      x += vx;
+      y += vy;
+
+      // bounce off edges (within viewport)
+      const minX = 6;
+      const minY = 6;
+      const maxX = window.innerWidth - w - 6;
+      const maxY = window.innerHeight - h - 6;
+
+      if (x < minX) { x = minX; vx = Math.abs(vx); }
+      if (x > maxX) { x = maxX; vx = -Math.abs(vx); }
+      if (y < minY) { y = minY; vy = Math.abs(vy); }
+      if (y > maxY) { y = maxY; vy = -Math.abs(vy); }
+
+      // slight frictionless random wobble so movement doesn't feel dead steady
+      vx += (Math.random() - 0.5) * 0.05;
+      vy += (Math.random() - 0.5) * 0.05;
+
+      // clamp velocity so it doesn't get ridiculously fast
+      const maxSpeed = Math.max(window.innerWidth, window.innerHeight) * 0.03;
+      const vMag = Math.sqrt(vx*vx + vy*vy);
+      if (vMag > maxSpeed) {
+        vx = (vx / vMag) * maxSpeed;
+        vy = (vy / vMag) * maxSpeed;
+      }
+
+      exitBtn.style.left = Math.round(x) + 'px';
+      exitBtn.style.top = Math.round(y) + 'px';
+    }
+
+    // On first click of Exit, start movement
+    exitBtn.addEventListener('click', (e) => {
+      // if not yet moving, start
+      if (!moving) {
+        // set x,y based on current rect
+        const r = exitBtn.getBoundingClientRect();
+        x = r.left;
+        y = r.top;
+        // give a velocity away from the click point so it 'moves away'
+        const clickX = (e.clientX !== undefined) ? e.clientX : (e.touches && e.touches[0].clientX) || (r.left + r.width/2);
+        const clickY = (e.clientY !== undefined) ? e.clientY : (e.touches && e.touches[0].clientY) || (r.top + r.height/2);
+        // direction from click to center of button (so it moves away)
+        const centerX = r.left + r.width/2;
+        const centerY = r.top + r.height/2;
+        let angle = Math.atan2(centerY - clickY, centerX - clickX);
+        // if click exactly in center, randomize angle
+        if (!isFinite(angle)) angle = Math.random() * Math.PI * 2;
+
+        const baseSpeed = Math.max(window.innerWidth, window.innerHeight) * 0.0075;
+        vx = Math.cos(angle) * baseSpeed;
+        vy = Math.sin(angle) * baseSpeed;
+
+        startMoving(true);
+      } else {
+        // If already moving, apply a "kick" to change its velocity so it darts away faster
+        const kick = Math.max(window.innerWidth, window.innerHeight) * 0.01;
+        vx += (Math.random() - 0.5) * kick * 2;
+        vy += (Math.random() - 0.5) * kick * 2;
+      }
+    });
+
+    // Also support touchstart on mobile (users might tap)
+    exitBtn.addEventListener('touchstart', (e) => {
+      // prevent the subsequent click delay
+      e.preventDefault();
+      // simulate click behavior on touch
+      const touch = e.touches[0];
+      const fakeEvent = { clientX: touch.clientX, clientY: touch.clientY };
+      exitBtn.dispatchEvent(new MouseEvent('click', fakeEvent));
+    });
+
+    // Keep movement active if orientation changes or resizing (clamp position)
+    window.addEventListener('resize', () => {
+      if (!moving) return;
+      const btnRect = exitBtn.getBoundingClientRect();
+      const w = btnRect.width, h = btnRect.height;
+      const maxX = window.innerWidth - w - 6;
+      const maxY = window.innerHeight - h - 6;
+      x = Math.min(Math.max(6, x), maxX);
+      y = Math.min(Math.max(6, y), maxY);
+      exitBtn.style.left = x + 'px';
+      exitBtn.style.top = y + 'px';
+    });
+
+    // Accessibility: allow keyboard to trigger Exit movement
+    exitBtn.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        exitBtn.click();
+      }
+    });
+
+    // Safety: if page hidden, pause moving to save resources; resume when visible
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        if (moveTimer) { clearInterval(moveTimer); moveTimer = null; }
+      } else {
+        if (moving && !moveTimer) moveTimer = setInterval(stepMove, step);
+      }
+    });
+  </script>
+
+</body>
+</html>

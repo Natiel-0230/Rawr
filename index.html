@@ -15,7 +15,6 @@
       overflow: hidden;
     }
 
-    /* Center buttons in the bottom area */
     .buttons {
       position: fixed;
       bottom: 20px;
@@ -23,6 +22,7 @@
       transform: translateX(-50%);
       display: flex;
       gap: 20px;
+      z-index: 10;
     }
 
     button {
@@ -39,7 +39,6 @@
       transform: scale(0.95);
     }
 
-    /* Overlay for GIF */
     .overlay {
       position: fixed;
       inset: 0;
@@ -100,15 +99,21 @@
 
     // Exit button movement
     const exitBtn = document.getElementById("exitBtn");
-    let moving = false, x = 50, y = window.innerHeight - 100, vx = 2, vy = -2;
+    let moving = false, x = 50, y = 50, vx = 2, vy = 2;
 
     function moveExit() {
       if (!moving) return;
+
+      const btnW = exitBtn.offsetWidth;
+      const btnH = exitBtn.offsetHeight;
+      const maxX = window.innerWidth - btnW;
+      const maxY = window.innerHeight - btnH;
+
       x += vx;
       y += vy;
 
-      if (x < 0 || x > window.innerWidth - exitBtn.offsetWidth) vx *= -1;
-      if (y < 0 || y > window.innerHeight - exitBtn.offsetHeight) vy *= -1;
+      if (x <= 0 || x >= maxX) vx *= -1;
+      if (y <= 0 || y >= maxY) vy *= -1;
 
       exitBtn.style.position = "fixed";
       exitBtn.style.left = x + "px";
@@ -122,6 +127,7 @@
         moving = true;
         moveExit();
       } else {
+        // make it faster if clicked again
         vx *= 1.2;
         vy *= 1.2;
       }
